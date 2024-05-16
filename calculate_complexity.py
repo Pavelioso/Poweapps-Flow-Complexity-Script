@@ -14,14 +14,17 @@ workflow_directory = args.workflow_directory
 type_complexity = {}
 type_count_template = {}
 
-# Load complexity points and initialize counts from a CSV file named 'points.csv'
+# Load complexity points and initialize counts from a CSV file 'points.csv'
 csv_file = "points.csv"
 with open(csv_file, newline='', encoding='utf-8') as csvfile:
     reader = csv.DictReader(csvfile)
     for row in reader:
         type_name = row['type']
-        complexity = int(row['complexity'])
-        type_complexity[type_name] = complexity
+        complexity = row['complexity']
+        if not complexity.isdigit():
+            print(f"Warning: Non-integer value '{complexity}' found for type '{type_name}' in points.csv")
+            continue
+        type_complexity[type_name] = int(complexity)
         type_count_template[type_name] = 0
 
 # Function to count occurrences of each type and calculate the total points
@@ -41,7 +44,7 @@ def count_and_calculate_complexity(data, type_count):
 
     return total_points
 
-# Function to detect if a "Foreach" is nested within another "Foreach"
+# Function to detect if a "Foreach" is nested within another "Foreach" - Seems to be very heavy inside of Powerapps Flows.
 def is_loop_within_loop(data, inside_foreach=False):
     if isinstance(data, dict):
         if data.get("type") == "Foreach":
@@ -60,10 +63,8 @@ def is_loop_within_loop(data, inside_foreach=False):
 
     return False
 
-# Initialize an empty list to hold all results
+# Make sure that provided directory exists before scanning it
 all_results = []
-
-# Ensure the provided directory exists before scanning it
 if os.path.isdir(workflow_directory):
     json_files = [file for file in os.listdir(workflow_directory) if file.endswith('.json')]
 
@@ -95,19 +96,24 @@ if os.path.isdir(workflow_directory):
         total_points = count_and_calculate_complexity(json_data, type_count)
         nested_loops_present = is_loop_within_loop(json_data)
 
-        # Append the result for this file to the `all_results` list
-        all_results.append({
+        # Prepare the result for this file
+        result = {
             "File": json_file,
             "Name": name,
             "Hash": file_hash,
-            "TypeCounts": type_count,
             "TotalComplexityPoints": total_points,
-            "IsLoopWithinLoopPresent": nested_loops_present
-        })
+            "IsLoopWithinLoopPresent": nested_loops_present,
+        }
+        result.update(type_count)
+        all_results.append(result)
 
-# Write all results to a single `output.json` file
-output_file = "output.json"
-with open(output_file, 'w', encoding='utf-8') as out_f:
-    json.dump(all_results, out_f, indent=4)
+# Write all results to a single `output.csv` file
+output_file = "output/complexity.csv"
+fieldnames = ["File", "Name", "Hash", "TotalComplexityPoints", "IsLoopWithinLoopPresent"] + list(type_count_template.keys())
+
+with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(all_results)
 
 print(f"All results written to {output_file}")
